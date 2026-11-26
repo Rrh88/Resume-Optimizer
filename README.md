@@ -5,7 +5,7 @@ Chat with your resume. Upload a PDF/DOCX, then ask things like "Optimize my resu
 ## Implemented agents (3 of 4)
 1. **JD Matching Agent**: analyzes a job description (or a target company/role), gives a match score (0-100), lists skill gaps, and restructures the resume to highlight relevant experience.
 2. **Section Enhancement Agent**: improves a requested section with action verbs, impact statements and consistent style.
-3. **Translation & Localization Agent**: translates and adapts headings, tone and date formats to the target market.
+3. **Translation & Localization Agent**: translates the resume and adapts headings, tone and date formats to the target market. It retrieves local hiring conventions from a Qdrant vector database (RAG) before translating.
 
 The Company Research agent is not implemented (web research was out of scope for the 24-hour limit).
 
@@ -24,6 +24,7 @@ flowchart TD
     S --> F[(Firebase Firestore)]
     P --> F
     G -.-> L[Gemini API with fallback models]
+    A -.->|Translation agent retrieves conventions| K[(Qdrant vector DB)]
 ```
 
 Flow of one chat message:
@@ -41,6 +42,7 @@ Flow of one chat message:
 | `backend/router.py` | Intent router (LLM structured output + keyword fallback) |
 | `backend/parser.py` | PDF (PyMuPDF) / DOCX (python-docx) text extraction and conversion to structured Resume JSON |
 | `backend/agents/` | `jd_match.py`, `section_enhance.py`, `translate.py`, shared `base.py` (rules + structured output) |
+| `backend/knowledge.py` | Qdrant vector DB (BGE embeddings) with local hiring conventions; `search_conventions()` used by the Translation agent |
 | `backend/firebase_db.py` | Firestore: conversations, messages, versions, active version |
 | `backend/llm.py` | Gemini client with retries and fallback across models |
 | `backend/schemas.py` | Pydantic models (Resume, RouterDecision, AgentResult) |
@@ -49,6 +51,7 @@ Flow of one chat message:
 ## Context engineering choices
 - **Structured resume state**: the resume is parsed once into JSON (summary, experience, skills, projects, education...). Agents edit sections, not raw text, which makes diffs, versioning and section-level edits reliable.
 - **Minimal context per agent**: agents receive only the current resume JSON, the task and the target (JD/company/role/section/language). They do not receive chat history, which keeps cost and noise low.
+- **Retrieved context for localization**: the Translation agent gets only the 2 most relevant market conventions from Qdrant, instead of a long static prompt.
 - **Router gets conversation context**: only the last few messages plus whether a JD was provided, enough to resolve follow-ups.
 - **Truthfulness rules in every agent prompt**: never invent employers, dates, metrics or skills; never change job titles, companies, degrees or contact details (except when translating); if a metric is missing, say what the user could add.
 - **State management**: every change creates an immutable version in Firestore with note and agent name; an `active_version` pointer enables undo/redo and compare.
@@ -56,13 +59,13 @@ Flow of one chat message:
 - **Reliability**: retries and automatic fallback across Gemini models (free tier returns 503 under load).
 
 ## Tools, APIs and why
-- **LangGraph / LangChain**: explicit graph for routing and multi-step workflows.
+- **LangChain + LangGraph**: LangChain (`langchain-google-genai`, structured output with Pydantic) for LLM calls, LangGraph for the routing and multi-agent workflow graph.
 - **FastAPI**: clean chat API design, typed request/response.
 - **Firebase Firestore**: required; stores messages and resume versions.
 - **Gemini API (free tier)**: chosen to keep the whole project free; model configured through `GEMINI_MODEL`.
+- **Qdrant (vector DB) + BGE embeddings (fastembed)**: stores local hiring conventions per market (Mexico, Spain, France, Germany, Brazil, USA, UK, India). The Translation agent retrieves the most relevant ones (RAG) before translating.
 - **PyMuPDF / python-docx**: PDF and DOCX parsing.
 - **Streamlit**: fastest way to build the chat UI, spinner as typing indicator, tabs for resume and diff.
-- **Vector DB**: not used. Resumes fit in the context window, so retrieval adds complexity without benefit here.
 
 ## Setup
 ```bash
@@ -83,13 +86,14 @@ Run (two terminals):
 uvicorn backend.main:app --reload
 streamlit run frontend/app.py
 ```
-Open http://localhost:8501, upload a resume, and start chatting.
+Open http://localhost:8501, upload a resume, and start chatting. The first run downloads the BGE embedding model.
 
 ## Features
 - PDF/DOCX upload and parsing
 - Intent routing and multi-agent coordination
 - Agent reasoning, changes, match score and skill gaps shown in chat
 - Follow-up questions and clarifications (e.g. asks for a JD when needed)
+- Local hiring conventions retrieved from a vector DB for translation
 - Version history, undo/redo, version diff (bonus)
 - Typing indicator while agents work (bonus, spinner)
 
@@ -97,4 +101,18 @@ Open http://localhost:8501, upload a resume, and start chatting.
 - No authentication; Firestore runs in test mode (development only).
 - Scanned image-only PDFs are not supported (no OCR).
 - Company Research agent and exporting the edited resume back to PDF/DOCX are not implemented.
-- Free-tier
+- The hiring conventions knowledge base is small (8 markets) and written by hand.
+- Free-tier Gemini limits can slow responses.
+
+## Responsible Use of AI
+**Name:** Rohit Harit
+
+**AI tool used:** Claude (Anthropic) chat assistant, used for code generation, debugging and step-by-step guidance on structuring this project. Gemini is used inside the application as the LLM.
+
+**What AI did:** generated most of the code in this repository (backend, agents, router, LangGraph graph, Qdrant knowledge module, Streamlit UI) and this README, based on my prompts and the assignment PDF. It also helped debug errors (for example PyMuPDF import warning, Gemini 503 errors, empty-resume output).
+
+**What I did:** read and understood the assignment, chose the stack and the 3 agents, created the Firebase project and API keys, ran every step, tested the system with my own resume and prompts, reported errors, and verified the behavior (routing, multi-agent flow, versioning, undo/redo, compare).
+
+**Transparency:** the full chat/prompt trace with the AI assistant is included in `docs/ai_traces/`. A test resume was used for testing; no real user data is stored in this repository.
+
+**Safeguards in the product:** agents are instructed not to fabricate experience, metrics or skills, and a guard rejects outputs that drop content.
