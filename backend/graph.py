@@ -56,8 +56,8 @@ def agents_node(state):
             "agent": name,
             "reasoning": r.reasoning,
             "changes": r.changes,
-            "match_score": r.match_score,
-            "skill_gaps": r.skill_gaps,
+            "match_score": r.match_score if name == "jd_match" else None,
+            "skill_gaps": r.skill_gaps if name == "jd_match" else [],
         })
     return {"steps": steps, "final_resume": resume.model_dump()}
 
