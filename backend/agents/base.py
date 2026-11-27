@@ -3,6 +3,7 @@ from backend.schemas import AgentResult, Resume
 
 RULES = """RULES:
 - Never invent employers, dates, degrees, metrics, or skills the candidate does not have.
+- NEVER add a skill, tool or technology to the skills list that is not already written somewhere in the original resume. NEVER remove existing skills: you may only reorder or regroup them.
 - NEVER change job titles, company names, degree names, dates or contact details (except when translating).
 - Use only numbers already present in the resume. If a metric is missing, keep the bullet factual and mention in reasoning which metric the user could add.
 - Return the FULL updated resume in `resume`, same structure.
