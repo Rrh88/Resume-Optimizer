@@ -42,7 +42,7 @@ class ChatRequest(BaseModel):
 
 
 class RouterDecision(BaseModel):
-    agents: List[Literal["jd_match", "section_enhance", "translate"]] = Field(default_factory=list)
+    agents: List[Literal["company_research", "jd_match", "section_enhance", "translate"]] = Field(default_factory=list)
     target_section: str = ""
     target_language: str = ""
     market: str = ""

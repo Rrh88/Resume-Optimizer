@@ -3,7 +3,7 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 
 from backend import firebase_db as fb
-from backend.agents import jd_match, section_enhance, translate
+from backend.agents import company_research, jd_match, section_enhance, translate
 from backend.router import route
 from backend.schemas import Resume
 
@@ -37,7 +37,12 @@ def agents_node(state):
     resume = Resume(**state["resume"])
     steps = []
     for name in d["agents"]:
-        if name == "jd_match":
+        if name == "company_research":
+            if d["target_company"]:
+                r = company_research.run(resume, d["target_company"], d["target_role"])
+            else:
+                r = jd_match.run(resume, jd=state.get("jd", ""), company="", role=d["target_role"])
+        elif name == "jd_match":
             r = jd_match.run(resume, jd=state.get("jd", ""), company=d["target_company"], role=d["target_role"])
         elif name == "section_enhance":
             r = section_enhance.run(resume, section=d["target_section"], instruction=state["message"], role=d["target_role"])
@@ -97,7 +102,7 @@ def run_chat(cid: str, message: str, jd: str = ""):
         reply = "Please paste the job description so I can match your resume to it."
         out_steps, new, version = [], old, active["version"]
     elif not d["agents"]:
-        reply = d["reply"] or "I can optimize for a company/role, match a job description, enhance a section, or translate your resume."
+        reply = d["reply"] or "I can optimize for a company, match a job description, enhance a section, or translate your resume."
         out_steps, new, version = [], old, active["version"]
     else:
         out_steps, new, version = out["steps"], out["final_resume"], out["version"]
